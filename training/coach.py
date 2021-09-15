@@ -21,6 +21,7 @@ from models.latent_codes_pool import LatentCodesPool
 from models.discriminator import LatentCodesDiscriminator
 from models.encoders.psp_encoders import ProgressiveStage
 from training.ranger import Ranger
+from video import create_csv, video_train_dataset
 
 random.seed(0)
 torch.manual_seed(0)
@@ -59,17 +60,24 @@ class Coach:
             self.fake_w_pool = LatentCodesPool(self.opts.w_pool_size)
 
         # Initialize dataset
-        self.train_dataset, self.test_dataset = self.configure_datasets()
-        self.train_dataloader = DataLoader(self.train_dataset,
-                                           batch_size=self.opts.batch_size,
-                                           shuffle=True,
-                                           num_workers=int(self.opts.workers),
-                                           drop_last=True)
-        self.test_dataloader = DataLoader(self.test_dataset,
-                                          batch_size=self.opts.test_batch_size,
-                                          shuffle=False,
-                                          num_workers=int(self.opts.test_workers),
-                                          drop_last=True)
+        create_csv()
+        self.train_dataloader = torch.utils.data.DataLoader(
+            video_train_dataset,
+            batch_size=self.opts.batch_size,
+            num_workers=self.opts.workers,
+        )
+        self.test_dataloader = self.train_dataloader
+        # self.train_dataset, self.test_dataset = self.configure_datasets()
+        # self.train_dataloader = DataLoader(self.train_dataset,
+        #                                    batch_size=self.opts.batch_size,
+        #                                    shuffle=True,
+        #                                    num_workers=int(self.opts.workers),
+        #                                    drop_last=True)
+        # self.test_dataloader = DataLoader(self.test_dataset,
+        #                                   batch_size=self.opts.test_batch_size,
+        #                                   shuffle=False,
+        #                                   num_workers=int(self.opts.test_workers),
+        #                                   drop_last=True)
 
         # Initialize logger
         log_dir = os.path.join(opts.exp_dir, 'logs')
