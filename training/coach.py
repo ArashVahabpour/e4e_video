@@ -21,10 +21,117 @@ from models.latent_codes_pool import LatentCodesPool
 from models.discriminator import LatentCodesDiscriminator
 from models.encoders.psp_encoders import ProgressiveStage
 from training.ranger import Ranger
+#from .video import video_train_dataset
 
 random.seed(0)
 torch.manual_seed(0)
 
+# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+
+import os
+import pytorchvideo
+import torch
+import random
+from abc import ABC, abstractmethod
+from typing import Any, Dict, Optional
+from pytorchvideo.data import ClipSampler
+#from pytorchvideo.data import LabeledVideoDataset, labeled_video_dataset
+from .video import LabeledVideoDataset, labeled_video_dataset
+
+from typing import Any, Callable, Dict, Optional, Type
+
+from pytorchvideo.transforms import (
+    ShortSideScale,
+    UniformCropVideo,
+    Normalize,
+    ApplyTransformToKey,
+)
+
+from torchvision.transforms import (
+    Compose,
+    Lambda,
+)
+
+
+def RAVDESS(
+    data_path: str,
+    clip_sampler: ClipSampler,
+    video_sampler: Type[torch.utils.data.Sampler] = torch.utils.data.RandomSampler,
+    transform: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
+    video_path_prefix: str = "",
+    decode_audio: bool = False,
+    decoder: str = "pyav",
+) -> LabeledVideoDataset:
+    """
+    A helper function to create ``LabeledVideoDataset`` object for the RAVDESS dataset.
+
+    Args:
+        data_path (str): Path to the data. The path type defines how the data
+            should be read:
+
+            * For a file path, the file is read and each line is parsed into a
+              video path and label.
+            * For a directory, the directory structure defines the classes
+              (i.e. each subdirectory is a class).
+
+        clip_sampler (ClipSampler): Defines how clips should be sampled from each
+                video. See the clip sampling documentation for more information.
+
+        video_sampler (Type[torch.utils.data.Sampler]): Sampler for the internal
+                video container. This defines the order videos are decoded and,
+                if necessary, the distributed split.
+
+        transform (Callable): This callable is evaluated on the clip output before
+                the clip is returned. It can be used for user defined preprocessing and
+                augmentations to the clips. See the ``LabeledVideoDataset`` class for clip
+                output format.
+
+        video_path_prefix (str): Path to root directory with the videos that are
+                loaded in ``LabeledVideoDataset``. All the video paths before loading
+                are prefixed with this path.
+
+        decode_audio (bool): If True, also decode audio from video.
+
+        decoder (str): Defines what type of decoder used to decode a video.
+
+    """
+
+    torch._C._log_api_usage_once("PYTORCHVIDEO.dataset.RAVDESS")
+
+    return labeled_video_dataset(
+        data_path,
+        clip_sampler,
+        video_sampler,
+        transform,
+        video_path_prefix,
+        decode_audio,
+        decoder,
+    )
+
+train_transform = Compose(
+            [
+            ApplyTransformToKey(
+              key="video",
+              transform=Compose(
+                  [
+                    #Lambda(lambda x: x[[0, len(x)//2,-1]]),
+                    Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
+                    ShortSideScale(size=256),
+                    UniformCropVideo(size=256, aug_index_key=1) # aug_index_key=1 for center
+                  ]
+                ),
+              ),
+            ]
+        )
+
+data_path = './data'
+delta = 500e-3  # 500ms
+
+video_train_dataset = RAVDESS(
+            data_path=os.path.join(data_path, "train.txt"),
+            clip_sampler=pytorchvideo.data.make_clip_sampler("random", 2*delta),
+            transform=train_transform
+        )
 
 class Coach:
     def __init__(self, opts, prev_train_checkpoint=None):
@@ -59,17 +166,25 @@ class Coach:
             self.fake_w_pool = LatentCodesPool(self.opts.w_pool_size)
 
         # Initialize dataset
-        self.train_dataset, self.test_dataset = self.configure_datasets()
-        self.train_dataloader = DataLoader(self.train_dataset,
-                                           batch_size=self.opts.batch_size,
-                                           shuffle=True,
-                                           num_workers=int(self.opts.workers),
-                                           drop_last=True)
-        self.test_dataloader = DataLoader(self.test_dataset,
-                                          batch_size=self.opts.test_batch_size,
-                                          shuffle=False,
-                                          num_workers=int(self.opts.test_workers),
-                                          drop_last=True)
+        self.train_dataloader = torch.utils.data.DataLoader(
+            video_train_dataset,
+            batch_size=self.opts.batch_size,
+            num_workers=self.opts.workers,
+        )
+        self.test_dataloader = self.train_dataloader
+        # self.train_dataset, self.test_dataset = self.configure_datasets()
+        # self.train_dataloader = DataLoader(self.train_dataset,
+        #                                    batch_size=self.opts.batch_size,
+        #                                    shuffle=True,
+        #                                    num_workers=int(self.opts.workers),
+        #                                    drop_last=True)
+        # self.test_dataloader = DataLoader(self.test_dataset,
+        #                                   batch_size=self.opts.test_batch_size,
+        #                                   shuffle=False,
+        #                                   num_workers=int(self.opts.test_workers),
+        #                                   drop_last=True)
+
+        print((video_train_dataset))
 
         # Initialize logger
         log_dir = os.path.join(opts.exp_dir, 'logs')
@@ -108,6 +223,10 @@ class Coach:
             self.check_for_progressive_training_update()
         while self.global_step < self.opts.max_steps:
             for batch_idx, batch in enumerate(self.train_dataloader):
+                # batch['video'].shape == 8, 3, 3, 256, 256 (i.e. batch_size, rgb, num_frames, w, h)
+                batch['video'] = batch['video'].transpose((0,2,1,3,4))
+                print('transpose size ', batch['video'].size(), batch['video'].transpose((3,0,1,2,4)).size())
+                # TODO add loss, transpose 2nd vs 3rd dim and flatten
                 loss_dict = {}
                 if self.is_training_discriminator():
                     loss_dict = self.train_discriminator(batch)

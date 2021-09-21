@@ -1,0 +1,34 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "--dataset_type", "ffhq_encode",
+                "--exp_dir", "experiment/vid",
+                "--start_from_latent_avg",
+                "--use_w_pool",
+                "--w_discriminator_lambda", "0.1",
+                "--progressive_start", "20000",
+                "--id_lambda", "0.5",
+                "--val_interval", "10000",
+                "--max_steps", "200000",
+                "--stylegan_size", "512",
+                "--stylegan_weights", "pretrained_models/stylegan2-ffhq-config-f.pt",
+                "--workers", "8",
+                "--batch_size", "8",
+                "--test_batch_size", "4",
+                "--test_workers", "4"          
+            ],
+            "justMyCode": false
+
+        }
+    ]
+}
