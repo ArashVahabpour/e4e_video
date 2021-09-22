@@ -115,7 +115,8 @@ train_transform = Compose(
               transform=Compose(
                   [
                     #Lambda(lambda x: x[[0, len(x)//2,-1]]),
-                    Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
+                    #Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
+                    Normalize((127.5, 127.5, 127.5), (127.5, 127.5, 127.5)),
                     ShortSideScale(size=256),
                     UniformCropVideo(size=256, aug_index_key=1) # aug_index_key=1 for center
                   ]
@@ -153,6 +154,7 @@ class Coach:
             else:
                 self.id_loss = moco_loss.MocoLoss(opts).to(self.device).eval()
         self.mse_loss = nn.MSELoss().to(self.device).eval()
+        self.cos_loss = nn.CosineSimilarity().to(self.device).eval()
 
         # Initialize optimizer
         self.optimizer = self.configure_optimizers()
@@ -184,7 +186,7 @@ class Coach:
         #                                   num_workers=int(self.opts.test_workers),
         #                                   drop_last=True)
 
-        print((video_train_dataset))
+        #print((video_train_dataset))
 
         # Initialize logger
         log_dir = os.path.join(opts.exp_dir, 'logs')
@@ -221,16 +223,19 @@ class Coach:
         self.net.train()
         if self.opts.progressive_steps:
             self.check_for_progressive_training_update()
+        print('before loading')
         while self.global_step < self.opts.max_steps:
             for batch_idx, batch in enumerate(self.train_dataloader):
-                # batch['video'].shape == 8, 3, 3, 256, 256 (i.e. batch_size, rgb, num_frames, w, h)
-                batch['video'] = batch['video'].transpose((0,2,1,3,4))
-                print('transpose size ', batch['video'].size(), batch['video'].transpose((3,0,1,2,4)).size())
-                # TODO add loss, transpose 2nd vs 3rd dim and flatten
+                # batch.shape == 8, 3, 3, 256, 256 (i.e. batch_size, rgb, num_frames, w, h)
+                batch = batch.transpose(2,1)
+                shape_old = batch.shape
+                batch = batch.reshape([-1, *shape_old[2:]])
+                #print('batch video size ', batch.size())
+                # TODO add loss, and flatten
                 loss_dict = {}
                 if self.is_training_discriminator():
                     loss_dict = self.train_discriminator(batch)
-                x, y, y_hat, latent = self.forward(batch)
+                x, y, y_hat, latent = self.forward([batch, batch.clone()])
                 loss, encoder_loss_dict, id_logs = self.calc_loss(x, y, y_hat, latent)
                 loss_dict = {**loss_dict, **encoder_loss_dict}
                 self.optimizer.zero_grad()
@@ -279,10 +284,13 @@ class Coach:
         agg_loss_dict = []
         for batch_idx, batch in enumerate(self.test_dataloader):
             cur_loss_dict = {}
+            batch = batch.transpose(2,1)
+            shape_old = batch.shape
+            batch = batch.reshape([-1, *shape_old[2:]])
             if self.is_training_discriminator():
                 cur_loss_dict = self.validate_discriminator(batch)
             with torch.no_grad():
-                x, y, y_hat, latent = self.forward(batch)
+                x, y, y_hat, latent = self.forward([batch, batch.clone()])
                 loss, cur_encoder_loss_dict, id_logs = self.calc_loss(x, y, y_hat, latent)
                 cur_loss_dict = {**cur_loss_dict, **cur_encoder_loss_dict}
             agg_loss_dict.append(cur_loss_dict)
@@ -392,6 +400,16 @@ class Coach:
             loss_lpips = self.lpips_loss(y_hat, y)
             loss_dict['loss_lpips'] = float(loss_lpips)
             loss += loss_lpips * self.opts.lpips_lambda
+        if self.opts.consistency_lambda > 0:
+            from math import prod
+            e = latent.reshape(-1, 3, prod(latent.shape[1:]))
+            #print(e.shape)
+            n1 = e[:, 0] - e[:, 1]
+            n2 = e[:, 1] - e[:, 2]
+            #print('n1 size ', n1.size())
+            loss_consistency = -self.cos_loss(n1, n2).mean()
+            loss_dict['loss_consistency'] = float(loss_consistency)
+            loss += loss_consistency * self.opts.consistency_lambda
         loss_dict['loss'] = float(loss)
         return loss, loss_dict, id_logs
 
@@ -495,7 +513,7 @@ class Coach:
 
     def train_discriminator(self, batch):
         loss_dict = {}
-        x, _ = batch
+        x = batch
         x = x.to(self.device).float()
         self.requires_grad(self.discriminator, True)
 
@@ -532,7 +550,8 @@ class Coach:
     def validate_discriminator(self, test_batch):
         with torch.no_grad():
             loss_dict = {}
-            x, _ = test_batch
+            #x, _ = test_batch
+            x = test_batch
             x = x.to(self.device).float()
             real_w, fake_w = self.sample_real_and_fake_latents(x)
             real_pred = self.discriminator(real_w)

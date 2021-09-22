@@ -217,15 +217,17 @@ class LabeledVideoDataset(torch.utils.data.IterableDataset):
                 "aug_index": aug_index,
                 **info_dict,
                 **({"audio": audio_samples} if audio_samples is not None else {}),
-            }
+            }            
+            #print('before min max', sample_dict["video"].min(), sample_dict["video"].max())
             if self._transform is not None:
                 sample_dict = self._transform(sample_dict)
+                #print('after min max', sample_dict["video"].min(), sample_dict["video"].max())
 
                 # User can force dataset to continue by returning None in transform.
                 if sample_dict is None:
                     continue
 
-            return sample_dict
+            return sample_dict['video']
         else:
             raise RuntimeError(
                 f"Failed to load video after {self._MAX_CONSECUTIVE_FAILURES} retries."
@@ -319,7 +321,7 @@ def RAVDESS(
             should be read:
 
             * For a file path, the file is read and each line is parsed into a
-              video path and label.
+              video path and lab#el.
             * For a directory, the directory structure defines the classes
               (i.e. each subdirectory is a class).
 
@@ -360,33 +362,33 @@ def RAVDESS(
 def omid(X):
     print(X.shape)
     return X
-train_transform = Compose(
-            [
-            ApplyTransformToKey(
-              key="video",
-              transform=Compose(
-                  [ 
-                    #Lambda(lambda x: x[[0, len(x)//2, -1]]),
-                    #Lambda(lambda x: x[[0, len(x)//2, -1]]),
-                    Lambda(lambda x: x[[0, len(x)//2, -1]]),
-                    Lambda(lambda x: omid(x)),
-                    Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
-                    ShortSideScale(size=256),
-                    UniformCropVideo(size=256, aug_index_key=1) # aug_index_key=1 for center
-                  ]
-                ),
-              ),
-            ]
-        )
+#train_transform = Compose(
+#            [
+#            ApplyTransformToKey(
+#              key="video",
+#              transform=Compose(
+#                  [ 
+#                    #Lambda(lambda x: x[[0, len(x)//2, -1]]),
+#                    #Lambda(lambda x: x[[0, len(x)//2, -1]]),
+#                    Lambda(lambda x: x[[0, len(x)//2, -1]]),
+#                    Lambda(lambda x: omid(x)),
+#                    Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
+#                    ShortSideScale(size=256),
+#                    UniformCropVideo(size=256, aug_index_key=1) # aug_index_key=1 for center
+#                  ]
+#                ),
+#              ),
+#            ]
+#        )
 
 data_path = './data'
 delta = 500e-3  # 500ms
 
-video_train_dataset = RAVDESS(
-            data_path=os.path.join(data_path, "train.txt"),
-            clip_sampler=pytorchvideo.data.make_clip_sampler("random", 2*delta),
-            transform=train_transform
-        )
+#video_train_dataset = RAVDESS(
+#            data_path=os.path.join(data_path, "train.txt"),
+#            clip_sampler=pytorchvideo.data.make_clip_sampler("random", 2*delta),
+#            transform=train_transform
+#        )
 
 
 
