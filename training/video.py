@@ -321,7 +321,7 @@ def RAVDESS(
             should be read:
 
             * For a file path, the file is read and each line is parsed into a
-              video path and lab#el.
+              video path and label.
             * For a directory, the directory structure defines the classes
               (i.e. each subdirectory is a class).
 
