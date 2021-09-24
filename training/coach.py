@@ -168,10 +168,6 @@ class Coach:
             self.fake_w_pool = LatentCodesPool(self.opts.w_pool_size)
 
         # Initialize dataset
-<<<<<<< HEAD
-=======
-        create_csv()
->>>>>>> b3dd2050eda10c135a11a184b4fa8f35701a5f1c
         self.train_dataloader = torch.utils.data.DataLoader(
             video_train_dataset,
             batch_size=self.opts.batch_size,
@@ -189,11 +185,8 @@ class Coach:
         #                                   shuffle=False,
         #                                   num_workers=int(self.opts.test_workers),
         #                                   drop_last=True)
-<<<<<<< HEAD
 
         #print((video_train_dataset))
-=======
->>>>>>> b3dd2050eda10c135a11a184b4fa8f35701a5f1c
 
         # Initialize logger
         log_dir = os.path.join(opts.exp_dir, 'logs')
